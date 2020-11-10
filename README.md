@@ -1,5 +1,9 @@
 # workshop-eks
 
+## AWS Reference Architecture
+
+![AWS Reference Architecture](AWSReferenceArchitecture.png)
+
 ## 1. [Login to AWS Console](1.login-to-aws-console.md)
 
 ## 2. [Install tools for EKS](2.install-tools-for-eks.md)
