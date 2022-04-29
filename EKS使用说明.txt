@@ -1,0 +1,145 @@
+https://docs.aws.amazon.com/eks/latest/userguide/what-is-eks.html
+https://github.com/xuemark/workshop-eks-new
+
+1. 为跳板机创建role，在跳板机上创建EKS Cluster
+IAM role to create EKS cluster
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "eks:*",
+                "ecr:*",
+                "ec2:*",
+                "iam:*",
+                "cloudformation:*",
+                "autoscaling:*",
+                "elasticloadbalancing:*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+
+2. 创建VPC和private subnet，给private subnet加上nat gateway
+
+3. 创建EKS Cluster
+参数定义参考：https://eksctl.io/usage/schema/
+cat <<EOF > create_cluster_nodegroup.yml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+    name: eks-mark16
+    region: us-east-1
+    version: "1.16"
+# vpc-mark
+vpc:
+    id: "vpc-xxx"
+    subnets:
+    # private:
+    #   us-west-2a:
+    #       id: "subnet-xxx"
+    #   us-west-2c:
+    #       id: "subnet-xxx"
+        public:
+            us-east-1a:
+                id: "subnet-xxx"
+            us-east-1b:
+                id: "subnet-xxx"
+            us-east-1c:
+                id: "subnet-xxx"
+    clusterEndpoints:
+        publicAccess: true
+        privateAccess: true
+
+managedNodeGroups:
+    - name: ng21
+      instanceName: ng21-managed
+      instanceType: t3.large
+      desiredCapacity: 1
+      minSize: 1
+      maxSize: 5
+      volumeSize: 10
+      iam:
+        # attachPolicyARNs:
+        #   - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        withAddonPolicies:
+            imageBuilder: true
+            autoScaler: true
+            albIngress: true
+            ebs: true
+            efs: true
+            cloudWatch: true
+      securityGroups:
+        attachIDs:
+        - sg-xxx
+      ssh:
+        enableSsm: true
+      labels: 
+        NodeGroup: ng21     
+EOF
+
+cat <<EOF > create_cluster_nodegroup.yml
+
+4. 本地电脑（optional）
+aws eks --region ${AWS_REGION} update-kubeconfig --name ${CLUSTER_NAME}
+
+5. 安装AWS Load Balancer Controller
+https://docs.aws.amazon.com/eks/latest/userguide/aws-load-balancer-controller.html
+
+6. 手工创建ALB和TargetGroup，然后和K8S Service做绑定
+cat <<EOF > target-group-binding.yml
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: kubernetes-dashboard
+  namespace: kubernetes-dashboard
+spec:
+  serviceRef:
+    name: serviceName
+    port: 443
+  targetGroupARN: xxx
+  targetType: ip # value=instance or ip
+EOF
+
+7. cluster autoscaler弹性扩展
+https://docs.aws.amazon.com/eks/latest/userguide/autoscaling.html
+https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler/cloudprovider/aws
+
+
+8. lunch template (optional)
+https://docs.aws.amazon.com/eks/latest/userguide/launch-templates.html
+
+
+cat <<EOF > create_managed_nodegroup_launch_template.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+    name: eks-mark
+    region: us-east-1
+    version: "latest"
+managedNodeGroups:
+    - name: ng-launch-template
+      launchTemplate:
+        id: lt-xxx # launch template id
+        version: "3" # optional (uses the default launch template version if unspecified)
+      desiredCapacity: 1
+      minSize: 1
+      maxSize: 5
+      iam:
+        withAddonPolicies:
+            imageBuilder: true
+            autoScaler: true
+            albIngress: true
+            ebs: true
+            efs: true
+            cloudWatch: true
+      labels: 
+        NodeGroup: ng-launch-template
+EOF
+
+
+
