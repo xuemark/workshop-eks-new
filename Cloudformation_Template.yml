@@ -64,7 +64,7 @@ Parameters:
   EKSClusterVersion:
     Description: EKS Cluster Version
     Type: String
-    Default: 1.19
+    Default: 1.21
   
 
 
