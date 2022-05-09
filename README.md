@@ -1,10 +1,10 @@
-# workshop-eks
+# EKS Workshop
 
-## AWS Reference Architecture
+EKS Workshop介绍在AWS EKS上的最佳实践，包括安装和配置AWS EKS Cluster，设置安全认证部分，演示部署测试应用的全流程，和部署常用Kubernetes插件，如负载均衡的插件-AWS Load Balancer Controller、监控插件-Prometheus和Grafana、日志插件-FluentBit、弹性扩展插件Cluster Autoscaler等。
 
-EKS Workshop介绍在AWS EKS上的最佳实践，包括安装和配置AWS EKS Cluster，部署常用Kubernetes插件，如负载均衡的插件-AWS Load Balancer Controller、监控插件-Prometheus和Grafana、日志插件-FluentBit、弹性扩展插件Cluster Autoscaler等。EKS Workshop采用[Cloudformation模版](Cloudformation_Template.yml)进行初始化配置，一键式创建VPC、Subnet、Nat Gateway、堡垒机、Role、Security Group、EKS Cluster等资源。
+EKS Workshop采用[Cloudformation模版](Cloudformation_Template.yml)进行初始化配置，一键式创建VPC、Subnet、Nat Gateway、堡垒机、Role、Security Group、EKS Cluster等资源。EKS Workshop中的实验步骤，多采用脚本的执行方式。Cloudformation template和script都可以植入到Devops pipeline中，方便实现基于AWS EKS上的CI/CD功能。
 
-Kubernetes常用了WEB应用，下图是基于AWS EKS的参考架构。
+Kubernetes常用于WEB应用，下图是基于AWS EKS的参考架构。
 ![AWS Reference Architecture](AWSReferenceArchitecture.png)
 
 下面是workshop的实验步骤。
