@@ -2,8 +2,12 @@
 
 ## AWS Reference Architecture
 
+EKS Workshop介绍在AWS EKS上的最佳实践，包括安装和配置AWS EKS Cluster，部署常用Kubernetes插件，如负载均衡的插件-AWS Load Balancer Controller、监控插件-Prometheus和Grafana、日志插件-FluentBit、弹性扩展插件Cluster Autoscaler等。EKS Workshop采用[Cloudformation模版](Cloudformation_Template.yml)进行初始化配置，一键式创建VPC、Subnet、Nat Gateway、堡垒机、Role、Security Group、EKS Cluster等资源。
+
+Kubernetes常用了WEB应用，下图是基于AWS EKS的参考架构。
 ![AWS Reference Architecture](AWSReferenceArchitecture.png)
 
+下面是workshop的实验步骤。
 ## 1. [Login to AWS Console](01.login-to-aws-console.md)
 
 ## 2. [Install tools for EKS](02.install-tools-for-eks.md)

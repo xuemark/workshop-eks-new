@@ -1,0 +1,370 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Create an VPC EC2 Role
+
+Parameters: 
+  VPCCIDR:
+    Description: CIDR Block for VPC
+    Type: String
+    Default: 10.10.0.0/16
+
+  PUBLICSUBNET1:
+    Description: Public Subnet 1
+    Type: String
+    Default: 10.10.1.0/24
+
+  PUBLICSUBNET2:
+    Description: Public Subnet 2
+    Type: String
+    Default: 10.10.2.0/24
+
+  PUBLICSUBNET3:
+    Description: Public Subnet 3
+    Type: String
+    Default: 10.10.3.0/24
+
+  PRIVATESUBNET1:
+    Description: Private Subnet 1
+    Type: String
+    Default: 10.10.4.0/24
+  PRIVATESUBNET2:
+    Description: Private Subnet 2
+    Type: String
+    Default: 10.10.5.0/24
+  PRIVATESUBNET3:
+    Description: Private Subnet 3
+    Type: String
+    Default: 10.10.6.0/24
+
+  InstancePrivateIP:
+    Description: Private IP Address
+    Type: String
+    Default: 10.10.1.5
+
+  InstanceName:
+    Description: Name of Instance
+    Type: String
+    Default: TestInstance
+
+  InstanceType:
+    Description: Type of Instance
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small]
+
+  AWSAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+
+  EKSClusterName:
+    Description: EKS Cluster Name
+    Type: String
+    Default: eks-test
+    
+  EKSClusterVersion:
+    Description: EKS Cluster Version
+    Type: String
+    Default: 1.19
+  
+
+
+Resources:
+# Security Group
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    DependsOn: VPC
+    Properties:
+      GroupDescription: SecurityGroup
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: SecurityGroupTest
+
+#Role
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Test-Role
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: EksPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                - eks:*
+                - ecr:*
+                - ec2:*
+                - iam:*
+                - cloudformation:*
+                - autoscaling:*
+                - elasticloadbalancing:*
+                Resource: "*"
+                Effect: Allow
+              - Action:
+                - ec2:ModifyReservedInstances
+                - ec2:PurchaseHostReservation
+                - ec2:PurchaseReservedInstancesOffering
+                - ec2:PurchaseScheduledInstances
+                - rds:PurchaseReservedDBInstancesOffering
+                - dynamodb:PurchaseReservedCapacityOfferings
+                - ec2:RequestSpotFleet
+                - ec2:RequestSpotInstances
+                Resource: "*"
+                Effect: Deny   
+
+#EC2
+  InstanceNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: ENI
+      SubnetId: !Ref PublicSubnet1
+      PrivateIpAddress: !Ref InstancePrivateIP
+      GroupSet: 
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: ENI
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: Test-Role
+      Path: /
+      Roles : 
+        - !Ref Role
+
+  MyEC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AWSAmiId
+      IamInstanceProfile: !Ref InstanceProfile
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref InstanceNetworkInterface
+          DeviceIndex: 0
+      SourceDestCheck: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 20
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: !Ref InstanceName
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Updates & Install needed programs
+          yum update -y 
+          #install eksctl
+          curl -OL "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz"
+          tar -zxf eksctl_$(uname -s)_amd64.tar.gz
+          mv -f ./eksctl /usr/bin
+          #create eks cluster
+          eksctl create cluster --name ${EKSClusterName} --region ${AWS::Region} --version ${EKSClusterVersion} --without-nodegroup --vpc-private-subnets ${PrivateSubnet1},${PrivateSubnet2},${PrivateSubnet3}
+# VPC Networking
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Type
+          Value: Test
+        - Key: Name
+          Value: VPC-Test
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn:
+      - VPC
+    Properties:
+      Tags:
+        - Key: Name
+          Value: IGW-VPC-Test
+        
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    DependsOn:
+      - VPC
+      - InternetGateway
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PUBLICSUBNET1
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Public Subnet 1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PUBLICSUBNET2
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '1'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Public Subnet 2
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PUBLICSUBNET3
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '2'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Public Subnet 3
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PRIVATESUBNET1
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Private Subnet 1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PRIVATESUBNET2
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '1'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Private Subnet 2
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    DependsOn: VPC
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PRIVATESUBNET3
+      MapPublicIpOnLaunch : true
+      AvailabilityZone: !Select
+        - '2'
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: Private Subnet 3
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: AttachGateway
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public Routing Table
+  PublicRouteIGW:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: PublicRouteIGW
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+  PublicRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: PublicRouteIGW
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+  PublicRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn: PublicRouteIGW
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Private Routing Table
+          
+  PrivateRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+  PrivateRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet3
+      RouteTableId: !Ref PrivateRouteTable
+
+
+# NatGateway
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - EIP
+        - AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+      - Key: Name
+        Value: NatGateway
+  EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
